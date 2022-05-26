@@ -17,10 +17,41 @@ const base = airtable.base(AIRTABLE_BASE_ID);
 const sourceDir = path.join(__dirname, "public", "images");
 const images = [...fs.readdirSync(sourceDir)];
 
+let recordKeys = new Set();
+
+const getFeaturesRecords = async () => {
+  return await base.table("Features").select({ view: "Grid view" }).all();
+};
+
 const uploadImages = async (records) => {
+  const featuresRecords = await getFeaturesRecords();
+
   for (const record of records) {
     const processedImages = record.get("Processed Images");
-    const productIdAndColorCode = `${record.get("Product ID")} ${record.get("Color Code")}`;
+    const productId = record.get("Product ID");
+    const colorCode = String(record.get("Color Code")).padStart(4, 0);
+
+    const relatedFeaturesRecords = featuresRecords.filter(
+      (featuresRecord) =>
+        (featuresRecord.get("Style Number") == productId &&
+          featuresRecord.get("Feature Name") == "Description") ||
+        featuresRecord.get("Feature Name" == "Features")
+    );
+    
+    if (relatedFeaturesRecords.length > 0) {
+      const description = relatedFeaturesRecords[0].get("Feature Value");
+      if(description) {
+        base("Products").update(record.id, { 
+          "Description (HTML) *": description
+        });    
+      }
+    }
+
+    const productIdAndColorCode = `${productId} ${colorCode}`;
+
+    if (recordKeys.has(productIdAndColorCode)) continue;
+
+    recordKeys.add(productIdAndColorCode);
 
     if (processedImages && processedImages.length > 0) {
       console.log("skipping record, already has processed images...");
@@ -28,9 +59,10 @@ const uploadImages = async (records) => {
     }
 
     // remove/edit the .includes("Detail") by demand
-    const relatedRecordImages = images.filter((image) => {
-      image.includes(productIdAndColorCode) && !image.includes("Detail");
-    });
+    const relatedRecordImages = images.filter(
+      (image) =>
+        image.includes(productIdAndColorCode) && !image.includes("Detail")
+    );
 
     const imagesUrl = [];
 
@@ -55,6 +87,6 @@ const run = () => {
       await uploadImages(records);
       fetchNextPage();
     });
-}
+};
 
 module.exports = { run };
